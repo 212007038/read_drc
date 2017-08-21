@@ -110,10 +110,10 @@ def parse_file(file_handle, main_record_type, sub_record_type):
                 wf_data = file_handle.read(1120)    # read entire waveform, 5 samples for each of the 8 leads
 
                 for x in range(0, 1120, 56):
-                    (Sign1, Sign2, Pacer, QRS) = unpack_from('<40xHHHH', wf_data[x:])
+                    (Sign1, Sign2, Pacer, QRS) = unpack_from('<48xHHHH', wf_data[x:])
 
                     # Calc lead I...
-                    (s1, s2, s3) = unpack_from('<hHH', wf_data[x:])
+                    (s1, s2, s3) = unpack_from('<hBBBB', wf_data[x:])
                     di2 = (s2 >> 8)
                     if Sign1 & 0x8000:
                         di2 = -di2
@@ -126,12 +126,17 @@ def parse_file(file_handle, main_record_type, sub_record_type):
                     di5 = (s3 & 0xff)
                     if Sign2 & 0x4000:
                         di5 = -di5
-                    lead_i = [None] * 5
+
+                    lead_i = [None] * 1
                     lead_i[0] = s1
-                    lead_i[1] = lead_i[0] + di2
-                    lead_i[2] = lead_i[1] + di3
-                    lead_i[3] = lead_i[2] + di4
-                    lead_i[4] = lead_i[3] + di5
+                    #lead_i[1] = di2
+                    #lead_i[2] = di3
+                    #lead_i[3] = di4
+                    #lead_i[4] = di5
+                    #lead_i[1] = lead_i[0] + di2
+                    #lead_i[2] = lead_i[1] + di3
+                    #lead_i[3] = lead_i[2] + di4
+                    #lead_i[4] = lead_i[3] + di5
                     yield lead_i   # send back
 
         # Advance to next sub-record...

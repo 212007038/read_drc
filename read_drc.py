@@ -41,36 +41,36 @@ DRI_MT_CASE = 19
 
 
 # Subrecord ID Value Subrecord Chapter DRI level
-DRI_WF_CMD = 0 # Waveform request
-DRI_WF_ECG1 = 1 # Old ECG waveforms
-DRI_WF_ECG2 = 2 # Old ECG waveforms
-DRI_WF_ECG3 = 3 # Old ECG waveforms
-DRI_WF_INVP1 = 4 # Invasive Blood Pressure Waveforms
-DRI_WF_INVP2 = 5 # Invasive Blood Pressure Waveforms
-DRI_WF_INVP3 = 6 # Invasive Blood Pressure Waveforms
-DRI_WF_INVP4 = 7 # Invasive Blood Pressure Waveforms
-DRI_WF_PLETH = 8 # Pleth Waveform
-DRI_WF_CO2 = 9 # CO2 Waveform
-DRI_WF_O2 = 10 # O2 Waveform
-DRI_WF_N2O = 11 # N2O Waveform
-DRI_WF_AA = 12 # Anesthesia Agent Waveform
-DRI_WF_AWP = 13 # PAW Waveform
-DRI_WF_FLOW = 14 # Flow Waveform
-DRI_WF_RESP = 15 # Respiration Waveform
-DRI_WF_INVP5 = 16 # Invasive Blood Pressure Waveforms DRI_LEVEL_97->
-DRI_WF_INVP6 = 17 # Invasive Blood Pressure Waveforms DRI_LEVEL_97->
-DRI_WF_EEG1 = 18 # EEG Waveform DRI_LEVEL_98->
-DRI_WF_EEG2 = 19 # EEG Waveform DRI_LEVEL_98->
-DRI_WF_EEG3 = 20 # EEG Waveform DRI_LEVEL_98->
-DRI_WF_EEG4 = 21 # EEG Waveform DRI_LEVEL_98->
-DRI_WF_ECG12 = 22 # ECG 12-lead Waveform DRI_LEVEL_98->
-DRI_WF_VOL = 23 # Airway volume Waveform DRI_LEVEL_98->
-DRI_WF_TONO_PRESS = 24 # Tonometry pressure Waveform DRI_LEVEL_98->
-DRI_WF_VENT_AWP = 25 # It is never used. DRI_LEVEL_98->
-DRI_WF_VENT_FLOW = 26 # It is never used. DRI_LEVEL_98->
-DRI_WF_VENT_VOL = 27 # It is never used. DRI_LEVEL_98->
-DRI_WF_NIBP = 28 # NIBP cuff pressure waveform. DRI_LEVEL_99->
-DRI_WF_SPI_LOOP_STATUS = 29 # Spirometry loop DRI_LEVEL_99->
+DRI_WF_CMD = 0  # Waveform request
+DRI_WF_ECG1 = 1  # Old ECG waveforms
+DRI_WF_ECG2 = 2  # Old ECG waveforms
+DRI_WF_ECG3 = 3  # Old ECG waveforms
+DRI_WF_INVP1 = 4  # Invasive Blood Pressure Waveforms
+DRI_WF_INVP2 = 5  # Invasive Blood Pressure Waveforms
+DRI_WF_INVP3 = 6  # Invasive Blood Pressure Waveforms
+DRI_WF_INVP4 = 7  # Invasive Blood Pressure Waveforms
+DRI_WF_PLETH = 8  # Pleth Waveform
+DRI_WF_CO2 = 9  # CO2 Waveform
+DRI_WF_O2 = 10  # O2 Waveform
+DRI_WF_N2O = 11  # N2O Waveform
+DRI_WF_AA = 12  # Anesthesia Agent Waveform
+DRI_WF_AWP = 13  # PAW Waveform
+DRI_WF_FLOW = 14  # Flow Waveform
+DRI_WF_RESP = 15  # Respiration Waveform
+DRI_WF_INVP5 = 16  # Invasive Blood Pressure Waveforms DRI_LEVEL_97->
+DRI_WF_INVP6 = 17  # Invasive Blood Pressure Waveforms DRI_LEVEL_97->
+DRI_WF_EEG1 = 18  # EEG Waveform DRI_LEVEL_98->
+DRI_WF_EEG2 = 19  # EEG Waveform DRI_LEVEL_98->
+DRI_WF_EEG3 = 20  # EEG Waveform DRI_LEVEL_98->
+DRI_WF_EEG4 = 21  # EEG Waveform DRI_LEVEL_98->
+DRI_WF_ECG12 = 22  # ECG 12-lead Waveform DRI_LEVEL_98->
+DRI_WF_VOL = 23  # Airway volume Waveform DRI_LEVEL_98->
+DRI_WF_TONO_PRESS = 24  # Tonometry pressure Waveform DRI_LEVEL_98->
+DRI_WF_VENT_AWP = 25  # It is never used. DRI_LEVEL_98->
+DRI_WF_VENT_FLOW = 26  # It is never used. DRI_LEVEL_98->
+DRI_WF_VENT_VOL = 27  # It is never used. DRI_LEVEL_98->
+DRI_WF_NIBP = 28  # NIBP cuff pressure waveform. DRI_LEVEL_99->
+DRI_WF_SPI_LOOP_STATUS = 29  # Spirometry loop DRI_LEVEL_99->
 
 # endregion
 
@@ -108,29 +108,31 @@ def parse_file(file_handle, main_record_type, sub_record_type):
                 # We got us a ECG sub-record to parse!
                 file_handle.seek(offset+60)     # offset directly to waveforms
                 wf_data = file_handle.read(1120)    # read entire waveform, 5 samples for each of the 8 leads
-                (Sign1, Sign2, Pacer, QRS) = unpack_from('<1112xHHHH ', wf_data)
 
-                # Calc lead I...
-                (s1, s2, s3) = unpack_from('<hHH', wf_data)
-                di2 = (s2 >> 8)
-                if Sign1 & 0x8000:
-                    di2 = -di2
-                di3 = (s2 & 0xff)
-                if Sign1 & 0x4000:
-                    di3 = -di3
-                di4 = (s3 >> 8)
-                if Sign2 & 0x8000:
-                    di4 = -di4
-                di5 = (s3 & 0xff)
-                if Sign2 & 0x4000:
-                    di5 = -di5
-                lead_i = [None] * 1
-                lead_i[0] = s1
-                #lead_i[1] = lead_i[0] - di2
-                #lead_i[2] = lead_i[1] - di3
-                #lead_i[3] = lead_i[2] - di4
-                #lead_i[4] = lead_i[3] - di5
-                yield lead_i   # send back
+                for x in range(0, 1120, 56):
+                    (Sign1, Sign2, Pacer, QRS) = unpack_from('<40xHHHH', wf_data[x:])
+
+                    # Calc lead I...
+                    (s1, s2, s3) = unpack_from('<hHH', wf_data[x:])
+                    di2 = (s2 >> 8)
+                    if Sign1 & 0x8000:
+                        di2 = -di2
+                    di3 = (s2 & 0xff)
+                    if Sign1 & 0x4000:
+                        di3 = -di3
+                    di4 = (s3 >> 8)
+                    if Sign2 & 0x8000:
+                        di4 = -di4
+                    di5 = (s3 & 0xff)
+                    if Sign2 & 0x4000:
+                        di5 = -di5
+                    lead_i = [None] * 5
+                    lead_i[0] = s1
+                    lead_i[1] = lead_i[0] + di2
+                    lead_i[2] = lead_i[1] + di3
+                    lead_i[3] = lead_i[2] + di4
+                    lead_i[4] = lead_i[3] + di5
+                    yield lead_i   # send back
 
         # Advance to next sub-record...
         offset += r_len

@@ -9,7 +9,9 @@ import os
 import argparse  # command line parser
 from struct import *
 from datetime import datetime
+import numpy as np
 import tags
+
 # endregion
 
 # region Globals region
@@ -111,6 +113,8 @@ def parse_file(file_handle, main_record_type, sub_record_type):
 
                 # Step through all the samples.
                 # The come in 1/10 increments.
+                lead = np.empty((100,), dtype=int)
+                ind = 0
                 for x in range(0, 1120, 56):
                     (Sign1, Sign2, Pacer, QRS) = unpack_from('<48xHHHH', wf_data[x:])
 
@@ -126,17 +130,23 @@ def parse_file(file_handle, main_record_type, sub_record_type):
                         di5 = -di5
 
                     # Build lead I...
-                    lead_i = [None] * 5
-                    lead_i[0] = s1
-                    #lead_i[1] = di2
-                    #lead_i[2] = di3
-                    #lead_i[3] = di4
-                    #lead_i[4] = di5
-                    lead_i[1] = lead_i[0] + (di2*2)
-                    lead_i[2] = lead_i[1] + (di3*2)
-                    lead_i[3] = lead_i[2] + (di4*2)
-                    lead_i[4] = lead_i[3] + (di5*2)
-                    yield lead_i   # send back
+                    s2 = s1 + (di2*2)
+                    s3 = s2 + (di3 * 2)
+                    s4 = s3 + (di4 * 2)
+                    s5 = s4 + (di5 * 2)
+
+                    lead[ind] = s1
+                    ind += 1
+                    lead[ind] = s2
+                    ind += 1
+                    lead[ind] = s3
+                    ind += 1
+                    lead[ind] = s4
+                    ind += 1
+                    lead[ind] = s5
+                    ind += 1
+
+                yield lead  # send back
 
         # Advance to next sub-record...
         offset += r_len
@@ -170,14 +180,10 @@ def main(arg_list=None):
 
     ###############################################################################
     # Open file and parse.
-    i = 0
     with open(args.drc_input_file, 'rb') as f:
         for lead_i in parse_file(f, DRI_MT_WAVE, DRI_WF_ECG12):
-            for s in lead_i:
-                print(s)
-                i += 1
-            if i > 32028:
-                break;
+            for x in lead_i:
+                print(x)
 
 
 ###############################################################################

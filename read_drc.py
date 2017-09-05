@@ -8,15 +8,15 @@
 import os
 import argparse  # command line parser
 from struct import *
-from datetime import datetime
 import numpy as np
-import tags
 
 # endregion
 
 # region Globals region
 
 __version__ = '1.0'  # version of script
+
+WF_FORMAT = '<hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB HHHH'
 
 # Record main-type
 DRC_HEADER_SIZE = 40
@@ -74,83 +74,102 @@ DRI_WF_VENT_VOL = 27  # It is never used. DRI_LEVEL_98->
 DRI_WF_NIBP = 28  # NIBP cuff pressure waveform. DRI_LEVEL_99->
 DRI_WF_SPI_LOOP_STATUS = 29  # Spirometry loop DRI_LEVEL_99->
 
+
+datex_hdr_fmt = '<HBBHLBBHH24s'
+ecg12_wf_data_fmt = '<hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB hBBBB HHHH'
+wf_hdr_fmt = '<HHH HHHHHHH'
+suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
 # endregion
 
 
-def parse_file(file_handle, main_record_type, sub_record_type):
-    offset = 0     # we need to keep track of where we are in the file
-    while True:
-        header_data = file_handle.read(DRC_HEADER_SIZE)
-        if len(header_data) == 0:
-            break
+def humansize(nbytes):
+    i = 0
+    while nbytes >= 1024 and i < len(suffixes)-1:
+        nbytes /= 1024.
+        i += 1
+    f = ('%.2f' % nbytes).rstrip('0').rstrip('.')
+    return '%s %s' % (f, suffixes[i])
+
+
+def build_sign_array():
+    # Build a gigantic multipication array
+    m_array = np.empty([65536, 16], dtype=np.int16)
+    l = [0x8000, 0x2000, 0x0800, 0x0200, 0x0080, 0x0020, 0x0008, 0x0002, 0x4000, 0x1000, 0x0400, 0x0100, 0x0040, 0x0010,
+         0x0004, 0x0001]
+    for x in range((m_array.shape)[0]):
+        for y in range((m_array.shape)[1]):
+            if x & l[y]:
+                m_array[x:x + 1, y:y + 1] = -2
+            else:
+                m_array[x:x + 1, y:y + 1] = 2
+
+    return m_array
+
+
+def gen_waveforms(buffer):
+    byte_size = len(buffer)
+    byte_offset = 0
+
+    multiply_array = build_sign_array()
+
+    # Iterate on building data.
+    while byte_offset < byte_size:
+        # Read the header...
         (r_len, r_nbr, dri_level, plug_id, r_time, n_subnet, res, dest_plug_id, r_maintype, sr_desc) = \
-            unpack_from('<HBBHLBBHH24s', header_data)
-        # Construct Datex - Record header
-        drh = \
-        {
-            'r_len': r_len,
-            'r_nbr': r_nbr,
-            'dri_level': dri_level,
-            'plug_id': plug_id,
-            'r_time': datetime.fromtimestamp(r_time).strftime('%Y-%m-%d %H:%M:%S'),
-            'n_subnet': n_subnet,
-            'res': res,
-            'dest_plug_id': dest_plug_id,
-            'r_maintype': r_maintype,
-            'sr_desc': sr_desc
-        }
+            unpack_from(datex_hdr_fmt, buffer[byte_offset:])
 
         # Unpack sub-records info into a list of tuples...
-        sub_recs = [unpack_from('<HB', sr_desc[(x*3):]) for x in range(8)]
+        sub_recs = [unpack_from('<HB', sr_desc[(x * 3):]) for x in range(8)]
 
-        # ECG waveform?
-        if r_maintype == main_record_type:
-            # Hunt down the sub-record the caller wants...
-            if (0, sub_record_type) in sub_recs:
-                # We got us a ECG sub-record to parse!
-                file_handle.seek(offset+60)     # offset directly to waveforms
-                wf_data = file_handle.read(1120)    # read entire waveform, 5 samples for each of the 8 leads
+        # Inspect for ecg12_wf data.
+        if r_maintype == DRI_MT_WAVE and (0, DRI_WF_ECG12) in sub_recs:
+            (act_len, status, label, size_in_bytes, status_1, status_2, status_3, status_4, status_5, status_6) = \
+                unpack_from(wf_hdr_fmt, buffer[byte_offset + 40:])
 
-                # Step through all the samples.
-                # The come in 1/10 increments.
-                lead = np.empty((100,), dtype=int)
-                ind = 0
-                for x in range(0, 1120, 56):
-                    (Sign1, Sign2, Pacer, QRS) = unpack_from('<48xHHHH', wf_data[x:])
+            # Ok, we got us a genuine ecg_12 waveform packet
+            # Cut a 200mS array for all leads, and an extra one for pace.
+            # Pace is a boolean that will be inserted at the correct sample point based on the parse.
+            # 100 rows for 200mS (2mS per row).
+            leads = np.zeros((900,), dtype=np.int16).reshape((100, 9))
+            row = 0
 
-                    # Unpack samples.
-                    (s1, di2, di3, di4, di5) = unpack_from('<hBBBB', wf_data[x:])
-                    if Sign1 & 0x8000:
-                        di2 = -di2
-                    if Sign1 & 0x4000:
-                        di3 = -di3
-                    if Sign2 & 0x8000:
-                        di4 = -di4
-                    if Sign2 & 0x4000:
-                        di5 = -di5
+            # Parse samples by looping 20 times..
+            for lead in iter_unpack(ecg12_wf_data_fmt, buffer[byte_offset + 60: byte_offset + 1180]):
+                a = np.asarray(lead, dtype=np.int16)  # move the tuple to a high spead array
+                sign1 = a[40]
+                sign2 = a[41]
+                pace = a[42] >> 13
 
-                    # Build lead I...
-                    s2 = s1 + (di2*2)
-                    s3 = s2 + (di3 * 2)
-                    s4 = s3 + (di4 * 2)
-                    s5 = s4 + (di5 * 2)
+                # Get our samples arranged
+                b = a[:40].reshape((8, 5)).T
+                b[[1, 2], ] = b[[2, 1], ]
+                b[[3, 4], ] = b[[4, 3], ]
 
-                    lead[ind] = s1
-                    ind += 1
-                    lead[ind] = s2
-                    ind += 1
-                    lead[ind] = s3
-                    ind += 1
-                    lead[ind] = s4
-                    ind += 1
-                    lead[ind] = s5
-                    ind += 1
+                # Add correct sign
+                b[1, ] *= multiply_array[sign1, 0:8]
+                b[2, ] *= multiply_array[sign1, 8:16]
+                b[3, ] *= multiply_array[sign2, 0:8]
+                b[4, ] *= multiply_array[sign2, 8:16]
 
-                yield lead  # send back
+                # Finally, add the deltas
+                b[1, ] += b[0, ]
+                b[2, ] += b[1, ]
+                b[3, ] += b[2, ]
+                b[4, ] += b[3, ]
 
-        # Advance to next sub-record...
-        offset += r_len
-        file_handle.seek(offset)
+                # Insert pace (if present)
+                if pace:
+                    leads[row + (pace - 1), 8] = 1  # 1 means pace occured
+
+                # Copy to packet
+                np.copyto(leads[row:row + 5, 0:8], b)
+                row += 5
+
+            yield leads
+
+        # Offset to next sub-record
+        byte_offset += r_len
 
 
 def main(arg_list=None):
@@ -179,11 +198,25 @@ def main(arg_list=None):
     # endregion
 
     ###############################################################################
+    # Open DRI and read in entire record...
+    with open(args.drc_input_file, 'rb') as fh:
+        file_data = fh.read()
+
+    if args.verbose is True:
+        print('Size of {0:s} is {1:s} bytes'.format(args.drc_input_file, humansize(len(file_data))))
+
+    ###############################################################################
     # Open file and parse.
-    with open(args.drc_input_file, 'rb') as f:
-        for lead_i in parse_file(f, DRI_MT_WAVE, DRI_WF_ECG12):
-            for x in lead_i:
-                print(x)
+    output_filename = os.path.splitext(os.path.basename(args.drc_input_file))[0] + '.csv'
+    with open(output_filename, 'wb') as fh:
+        total_time = 0
+        for wf_data in gen_waveforms(file_data):
+            np.savetxt(fh, wf_data, fmt='%d', delimiter=',')
+            total_time += 1
+            if total_time % 100 == 0:
+                print('{0:.2f} seconds processed'.format(total_time/100))
+
+    return 0
 
 
 ###############################################################################

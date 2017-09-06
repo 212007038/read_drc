@@ -9,6 +9,7 @@ import os
 import argparse  # command line parser
 from struct import *
 import numpy as np
+import sys
 
 # endregion
 
@@ -160,7 +161,7 @@ def gen_waveforms(buffer):
 
                 # Insert pace (if present)
                 if pace:
-                    leads[row + (pace - 1), 8] = 1  # 1 means pace occured
+                    leads[row + (pace - 1), 8] = 1  # 1 means pace occurred
 
                 # Copy to packet
                 np.copyto(leads[row:row + 5, 0:8], b)
@@ -179,6 +180,8 @@ def main(arg_list=None):
     parser = argparse.ArgumentParser(description="Process the given Datex-Ohmeda Record")
     parser.add_argument('-i', dest='drc_input_file',
                         help='name of Datex-Ohmeda Record to read and process', required=True)
+    parser.add_argument('-s', dest='max_seconds_to_process', type=int, default=sys.maxsize,
+                        help='number of seconds to process and quit', required=False)
     parser.add_argument('-v', dest='verbose', default=False, action='store_true',
                         help='verbose output flag', required=False)
     parser.add_argument('--version', action='version', help='Print version.',
@@ -211,10 +214,16 @@ def main(arg_list=None):
     with open(output_filename, 'wb') as fh:
         total_time = 0
         for wf_data in gen_waveforms(file_data):
-            np.savetxt(fh, wf_data, fmt='%d', delimiter=',')
-            total_time += 1
-            if total_time % 100 == 0:
-                print('{0:.2f} seconds processed'.format(total_time/100))
+            np.savetxt(fh, wf_data, fmt='%d', delimiter=',')    # save to CSV file
+            total_time += 1     # advance time
+
+            # Check for user specified limit.
+            if (total_time / 5) > args.max_seconds_to_process:
+                break
+
+            # Tell user how many seconds processed...
+            if total_time % 5 == 0:
+                print('{0:.2f} seconds processed'.format(total_time/5))
 
     return 0
 
